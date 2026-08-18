@@ -94,7 +94,7 @@ pipeline {
                 sh '''
                     sleep 10
                     docker ps --filter name=springboot-app
-                    curl -f http://localhost:8081/actuator/health
+                    curl -f http://localhost:8089/actuator/health
                 '''
             }
         }
