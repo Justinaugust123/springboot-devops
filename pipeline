@@ -1,0 +1,75 @@
+    agent any
+
+    environment {
+        IMAGE_NAME = "justinaugust123/springboot-devops"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Maven Build') {
+            steps {
+                sh '''
+                    chmod +x mvnw
+                    ./mvnw clean package -DskipTests
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh '''
+                    ./mvnw test
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build \
+                        -t ${IMAGE_NAME}:${IMAGE_TAG} \ -t ${IMAGE_NAME}:latest . '''
+            }
+        }
+        stage('Docker Login') { steps { withCredentials([ usernamePassword( credentialsId: 
+                        'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 
+                        'DOCKER_TOKEN'
+                    ) ]) { sh ''' echo "$DOCKER_TOKEN" | \ docker login \ -u "$DOCKER_USER" \ --password-stdin 
+                    '''
+                }
+            }
+        }
+        stage('Push Docker Image') { steps { sh ''' docker push ${IMAGE_NAME}:${IMAGE_TAG} docker push 
+                    ${IMAGE_NAME}:latest
+                '''
+            }
+        }
+        stage('Stop Old Container') { steps { sh ''' docker rm -f springboot-app || true '''
+            }
+        }
+        stage('Deploy') { steps { sh ''' docker run -d \ --name springboot-app \ --restart unless-stopped \ -p 
+                        8081:8080 \ ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+        }
+        stage('Verify') { steps { sh ''' sleep 10 docker ps --filter name=springboot-app curl -f 
+                    http://localhost:8081/actuator/health
+                '''
+            }
+        }
+    }
+    post { success { echo "Spring Boot deployment successful!"
+        }
+        failure { echo "Deployment failed." sh 'docker logs springboot-app || true'
+        }
+        always {
+            sh 'docker logout || true'
+        }
+    }
+}
